@@ -24,21 +24,20 @@ void set_scale(s21_decimal *num, int scale) {
 }
 
 int s21_from_float_to_decimal(float src, s21_decimal *dst) {
-    if (!dst || isnan(src) || isinf(src) || fabs(src) > MAX_DECIMAL || fabs(src) < MIN_DECIMAL) {
-        return 1;  // Ошибка конвертации
-    }
 
     if (src == 0.0f) {
         null_decimal(dst);
-        set_scale(dst, 0);
-        printf("Округленное значение: 0.0\n");
+        set_scale(dst, 1);
         return 0;
     }
+
+    if (!dst || isnan(src) || isinf(src) || fabs(src) > MAX_DECIMAL || fabs(src) < MIN_DECIMAL)
+        return 1;  // Ошибка конвертации
 
     int sign = signbit(src) ? 1 : 0;
     src = fabs(src);
 
-    // **Округление до 7 значащих цифр**
+    // // **Округление до 7 значащих цифр**
     int exponent = (int)floor(log10f(src));  // Определяем порядок числа
     int scale = 0;
     float rounded_value;
@@ -50,20 +49,20 @@ int s21_from_float_to_decimal(float src, s21_decimal *dst) {
         rounded_value = roundf(src * powf(10, scale));
     }
 
-    printf("Округленное значение: %.7g\n", rounded_value);  // Вывод округленного значения
 
-    // Преобразуем округленное значение в целое
-    unsigned long long int_part = (unsigned long long)rounded_value;
+     // Преобразуем округленное значение в целое (96 бит)
+    unsigned long long low = (unsigned long long)rounded_value;
+    unsigned long long high = (unsigned long long)(rounded_value / powl(2, 64));
 
     // Записываем в decimal
-    dst->bits[0] = (int)(int_part & 0xFFFFFFFF);
-    dst->bits[1] = (int)((int_part >> 32) & 0xFFFFFFFF);
-    dst->bits[2] = 0;
+    dst->bits[0] = (int)(low & 0xFFFFFFFF);
+    dst->bits[1] = (int)((low >> 32) & 0xFFFFFFFF);
+    dst->bits[2] = (int)(high & 0xFFFFFFFF);
 
     set_sign(dst, sign);
     set_scale(dst, scale);
 
-    return 0;  // Успешная конвертация
+    return 0; // Успешная конвертация
 }
 
 void print_decimal(s21_decimal *dec) {
@@ -72,7 +71,7 @@ void print_decimal(s21_decimal *dec) {
 
 int main() {
     s21_decimal dec;
-    float test_values[] = {0.0f, 12345.6789f, -98765.4321f, 1e38f, 1e-40f, NAN, INFINITY, -INFINITY};
+    float test_values[] = { 0.0f, 12345.67f, -98765.433453f, 1e38f, 1e-40f, NAN, INFINITY, -INFINITY};
 
     for (int i = 0; i < 8; i++) {
         printf("Test %d: %g -> ", i + 1, test_values[i]);
@@ -85,3 +84,5 @@ int main() {
     }
     return 0;
 }
+
+// gcc -o float s21_from_float_to_decimal.c -lm
