@@ -6,6 +6,14 @@
 int is_zero(s21_decimal value) {
     return (value.bits[0] == 0 && value.bits[1] == 0 && value.bits[2] == 0);
 }
+int get_scale(s21_decimal d) {
+    return (d.bits[3] >> 16) & 0xFF; 
+}
+
+// Получение знака числа
+int get_sign(s21_decimal d) {
+    return (d.bits[3] >> 31) & 0x1;
+}
 
 // Функция для вывода числа в удобном формате
 void PrintDecimal(s21_decimal value) {
@@ -14,8 +22,8 @@ void PrintDecimal(s21_decimal value) {
         return;
     }
 
-    int sign = (value.bits[3] >> 31) & 1;
-    int scale = (value.bits[3] >> 16) & 0xFF;
+    int sign = get_sign(value);
+    int scale = get_scale(value);
 
     unsigned long long low = value.bits[0];
     unsigned long long mid = value.bits[1];
@@ -27,21 +35,7 @@ void PrintDecimal(s21_decimal value) {
     if (sign) {
         printf("-");
     }
-    printf("%.10g\n", result);
-}
-
-// Установка знака числа
-void set_sign(s21_decimal *result, int sign) {
-    if (sign == 1) {
-        result->bits[3] |= (1U << 31);
-    } else {
-        result->bits[3] &= ~(1U << 31);
-    }
-}
-
-// Получение знака числа
-int get_sign(s21_decimal d) {
-    return (d.bits[3] >> 31) & 0x1;
+    printf("%g\n", result);
 }
 
 // Функция negate
@@ -114,6 +108,7 @@ int main() {
     } else {
         printf("Ошибка (функция должна вернуть 1!)\n");
     }
+
 
     return 0;
 }
