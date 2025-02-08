@@ -1,7 +1,5 @@
 #include "../s21_decimal.h"
 
-#define MAX_MANTISSA 79228162514264337593543950335ULL
-
 void PrintDecimal(s21_decimal value) {
     int sign = (value.bits[3] >> 31) & 1;
     int scale = (value.bits[3] >> 16) & 0xFF;
