@@ -1,10 +1,5 @@
 #include "../s21_decimal.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <math.h>
-
 #define MAX_MANTISSA 79228162514264337593543950335ULL
 
 void PrintDecimal(s21_decimal value) {
@@ -21,7 +16,7 @@ void PrintDecimal(s21_decimal value) {
     if (sign) {
         printf("-");
     }
-    printf("%.10g\n", result);
+    printf("%g\n", result);
 }
 
 void set_sign(s21_decimal *result, int sign) {
@@ -46,21 +41,39 @@ void set_scale(s21_decimal *d, int scale) {
 }
 
 
-// void normalize(s21_decimal *a, s21_decimal *b) {
-//     int scale_a = get_scale(*a);
-//     int scale_b = get_scale(*b);
-    
-//     while (scale_a < scale_b) {
-//         if (safe_multiply_by_ten(a)) return;
-//         scale_a++;
-//     }
-//     while (scale_b < scale_a) {
-//         if (safe_multiply_by_ten(b)) return;
-//         scale_b++;
-//     }
-//     set_scale(a, scale_a);
-//     set_scale(b, scale_b);
-// }
+void normalize(s21_decimal *a, s21_decimal *b) {
+    int scale_a = get_scale(*a);
+    int scale_b = get_scale(*b);
+
+    while (scale_a < scale_b) {
+        if (scale_a >= 28) break;
+        uint64_t low = (uint64_t)a->bits[0] * 10;
+        uint64_t mid = (uint64_t)a->bits[1] * 10 + (low >> 32);
+        uint64_t high = (uint64_t)a->bits[2] * 10 + (mid >> 32);
+
+        a->bits[0] = (uint32_t)low;
+        a->bits[1] = (uint32_t)mid;
+        a->bits[2] = (uint32_t)high;
+
+        scale_a++;
+    }
+
+    while (scale_b < scale_a) {
+        if (scale_b >= 28) break;
+        uint64_t low = (uint64_t)b->bits[0] * 10;
+        uint64_t mid = (uint64_t)b->bits[1] * 10 + (low >> 32);
+        uint64_t high = (uint64_t)b->bits[2] * 10 + (mid >> 32);
+
+        b->bits[0] = (uint32_t)low;
+        b->bits[1] = (uint32_t)mid;
+        b->bits[2] = (uint32_t)high;
+
+        scale_b++;
+    }
+
+    set_scale(a, scale_a);
+    set_scale(b, scale_b);
+}
 
 int s21_add(s21_decimal value_1, s21_decimal value_2, s21_decimal *result) {
     if (!result) return 1;  // Проверка на NULL
@@ -73,50 +86,27 @@ int s21_add(s21_decimal value_1, s21_decimal value_2, s21_decimal *result) {
     *result = (s21_decimal){{0, 0, 0, 0}}; // Обнуление результата
 
     // Приведение к одинаковой степени
-    while (scale_1 < scale_2) {
-        if (value_1.bits[2] > (UINT32_MAX / 10)) return 1; // Проверка переполнения
-        for (int i = 2; i >= 0; i--) {
-            uint64_t temp = (uint64_t)value_1.bits[i] * 10;
-            if (i < 2) temp += value_1.bits[i + 1] >> 30;
-            value_1.bits[i] = (uint32_t)temp;
-        }
-        scale_1++;
-    }
+    normalize(&value_1, &value_2);
 
-    while (scale_2 < scale_1) {
-        if (value_2.bits[2] > (UINT32_MAX / 10)) return 1; // Проверка переполнения
-        for (int i = 2; i >= 0; i--) {
-            uint64_t temp = (uint64_t)value_2.bits[i] * 10;
-            if (i < 2) temp += value_2.bits[i + 1] >> 30;
-            value_2.bits[i] = (uint32_t)temp;
-        }
-        scale_2++;
-    }
-
-    int carry = 0;
     if (sign_1 == sign_2) { 
         // Сложение чисел с одинаковыми знаками
-        for (int i = 0; i < 3; i++) {
-            uint64_t sum = (uint64_t)value_1.bits[i] + value_2.bits[i] + carry;
-            result->bits[i] = (uint32_t)sum;
-            carry = sum >> 32;
+        unsigned long long low = (unsigned long long)value_1.bits[0] + value_2.bits[0];
+        unsigned long long mid = (unsigned long long)value_1.bits[1] + value_2.bits[1] + (low >> 32);
+        unsigned long long high = (unsigned long long)value_1.bits[2] + value_2.bits[2] + (mid >> 32);
+
+        if (high >> 32) {
+            return (sign_1 == 0) ? 1 : 2;  // Переполнение
         }
-        if (carry) return 1; // Переполнение
+
+        result->bits[0] = (int)low;
+        result->bits[1] = (int)mid;
+        result->bits[2] = (int)high;
         set_sign(result, sign_1);
     } else { 
         // Вычитание (если знаки разные)
-        int borrow = 0, cmp = 0;
-        for (int i = 2; i >= 0; i--) {
-            if (value_1.bits[i] > value_2.bits[i]) {
-                cmp = 1;
-                break;
-            } else if (value_1.bits[i] < value_2.bits[i]) {
-                cmp = -1;
-                break;
-            }
-        }
-
-        if (cmp < 0) {  
+        if (value_1.bits[2] < value_2.bits[2] || 
+            (value_1.bits[2] == value_2.bits[2] && value_1.bits[1] < value_2.bits[1]) ||
+            (value_1.bits[2] == value_2.bits[2] && value_1.bits[1] == value_2.bits[1] && value_1.bits[0] < value_2.bits[0])) {
             // Меняем местами если `|value_2| > |value_1|`
             s21_decimal temp = value_1;
             value_1 = value_2;
@@ -124,17 +114,13 @@ int s21_add(s21_decimal value_1, s21_decimal value_2, s21_decimal *result) {
             sign_1 = !sign_1;
         }
 
-        for (int i = 0; i < 3; i++) {
-            int64_t diff = (int64_t)value_1.bits[i] - value_2.bits[i] - borrow;
-            if (diff < 0) {
-                diff += (1LL << 32);
-                borrow = 1;
-            } else {
-                borrow = 0;
-            }
-            result->bits[i] = (uint32_t)diff;
-        }
+        unsigned long long low = (unsigned long long)value_1.bits[0] - value_2.bits[0];
+        unsigned long long mid = (unsigned long long)value_1.bits[1] - value_2.bits[1] - (low >> 63);
+        unsigned long long high = (unsigned long long)value_1.bits[2] - value_2.bits[2] - (mid >> 63);
 
+        result->bits[0] = (int)low;
+        result->bits[1] = (int)mid;
+        result->bits[2] = (int)high;
         set_sign(result, sign_1);
     }
 
