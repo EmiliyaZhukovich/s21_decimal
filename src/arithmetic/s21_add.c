@@ -1,191 +1,190 @@
 #include "../s21_decimal.h"
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-void PrintDecimal(s21_decimal *value) {
-    int scale = (value->bits[3] >> 16) & 0xFF;  // Масштаб (scale)
-    int sign = (value->bits[3] & (1 << 31)) ? -1 : 1;  // Знак числа
-    long long int integer_part = 0;
+#define MAX_MANTISSA 79228162514264337593543950335ULL
 
-    // Извлекаем целую часть
-    for (int i = 0; i < 3; i++) {
-        integer_part |= (long long int)(value->bits[i]) << (32 * i);
+void PrintDecimal(s21_decimal value) {
+    int sign = (value.bits[3] >> 31) & 1;
+    int scale = (value.bits[3] >> 16) & 0xFF;
+
+    unsigned long long low = value.bits[0];
+    unsigned long long mid = value.bits[1];
+    unsigned long long high = value.bits[2];
+
+    unsigned __int128 full_value = ((unsigned __int128)high << 64) | (mid << 32) | low;
+    double result = (double)full_value / pow(10, scale);
+
+    if (sign) {
+        printf("-");
     }
-
-    // Печать числа с учетом знака и масштаба
-    if (scale == 0) {
-        printf("Decimal: %lld\n", sign * integer_part);
-    } else {
-        // Выводим дробную часть
-        long long int divisor = 1;
-        for (int i = 0; i < scale; i++) {
-            divisor *= 10;
-        }
-        long long int fractional_part = integer_part % divisor;
-        integer_part /= divisor;
-        printf("Decimal: %lld.%0*lld (scaled by %d)\n", sign * integer_part, scale, fractional_part, scale);
-    }
-}
-
-void PrintDecimalBinary(s21_decimal *value) {
-    // Печать 4-х слов по 32 бита в двоичном виде
-    for (int i = 3; i >= 0; i--) {
-        printf("bits[%d]: ", i);
-        for (int j = 31; j >= 0; j--) {
-            printf("%d", (value->bits[i] >> j) & 1);  // Печать каждого бита
-        }
-        printf("\n");
-    }
-}
-
-int decimal_normalize(s21_decimal *value_1, s21_decimal *value_2) {
-    int scale_1 = (value_1->bits[3] >> 16) & 0xFF;  // Масштаб первого числа
-    int scale_2 = (value_2->bits[3] >> 16) & 0xFF;  // Масштаб второго числа
-
-    // Если масштабы одинаковые, не нужно ничего делать
-    if (scale_1 == scale_2) {
-        return 0;
-    }
-
-    // Приводим оба числа к максимальной точности
-    int max_scale = scale_1 > scale_2 ? scale_1 : scale_2;
-
-    // Если scale_1 < max_scale, умножаем number_1 на 10^(max_scale - scale_1)
-    if (scale_1 < max_scale) {
-        int shift = max_scale - scale_1;
-        for (int i = 0; i < shift; i++) {
-            // Умножаем на 10
-            long long int carry = 0;
-            for (int j = 0; j < 3; j++) {
-                long long int temp = (long long int)value_1->bits[j] * 10 + carry;
-                value_1->bits[j] = (int)(temp & 0xFFFFFFFF);
-                carry = temp >> 32;
-            }
-        }
-        value_1->bits[3] = (value_1->bits[3] & 0x80000000) | (max_scale << 16);  // Обновляем scale
-    }
-
-    // Если scale_2 < max_scale, умножаем number_2 на 10^(max_scale - scale_2)
-    if (scale_2 < max_scale) {
-        int shift = max_scale - scale_2;
-        for (int i = 0; i < shift; i++) {
-            // Умножаем на 10
-            long long int carry = 0;
-            for (int j = 0; j < 3; j++) {
-                long long int temp = (long long int)value_2->bits[j] * 10 + carry;
-                value_2->bits[j] = (int)(temp & 0xFFFFFFFF);
-                carry = temp >> 32;
-            }
-        }
-        value_2->bits[3] = (value_2->bits[3] & 0x80000000) | (max_scale << 16);  // Обновляем scale
-    }
-
-    return 0;  
-}
-
-int is_less(s21_decimal value_1, s21_decimal value_2) {
-    // Сравнение двух чисел
-    if (value_1.bits[3] < value_2.bits[3]) return 1;
-    if (value_1.bits[3] > value_2.bits[3]) return 0;
-
-    // Если знаки одинаковые, сравниваем младшие биты.
-    for (int i = 2; i >= 0; i--) {
-        if (value_1.bits[i] < value_2.bits[i]) return 1;
-        if (value_1.bits[i] > value_2.bits[i]) return 0;
-    }
-    return 0;  
+    printf("%.10g\n", result);
 }
 
 void set_sign(s21_decimal *result, int sign) {
     if (sign == 1) {
-        result->bits[3] |= (1 << 31); // Устанавливаем старший бит в 1 для отрицательного числа
+        result->bits[3] |= (1U << 31);
     } else {
-        result->bits[3] &= ~(1 << 31); // Убираем старший бит для положительного числа
+        result->bits[3] &= ~(1U << 31);
     }
 }
 
-int s21_add(s21_decimal value_1, s21_decimal value_2, s21_decimal* result) {
-    // Нормализация чисел перед сложением
-    int normalisation = decimal_normalize(&value_1, &value_2);
+int get_sign(s21_decimal d) {
+    return (d.bits[3] >> 31) & 0x1;
+}
+
+int get_scale(s21_decimal d) {
+    return (d.bits[3] >> 16) & 0xFF;
+}
+
+void set_scale(s21_decimal *d, int scale) {
+    d->bits[3] &= ~(0xFF << 16);
+    d->bits[3] |= (scale << 16);
+}
+
+
+// void normalize(s21_decimal *a, s21_decimal *b) {
+//     int scale_a = get_scale(*a);
+//     int scale_b = get_scale(*b);
     
-    // Извлекаем знаки чисел
-    int sign1 = (value_1.bits[3] & (1 << 31)) ? 1 : 0;
-    int sign2 = (value_2.bits[3] & (1 << 31)) ? 1 : 0;
+//     while (scale_a < scale_b) {
+//         if (safe_multiply_by_ten(a)) return;
+//         scale_a++;
+//     }
+//     while (scale_b < scale_a) {
+//         if (safe_multiply_by_ten(b)) return;
+//         scale_b++;
+//     }
+//     set_scale(a, scale_a);
+//     set_scale(b, scale_b);
+// }
 
-    if (sign1 == sign2) {
-        // Если знаки одинаковые, складываем их.
-        int carry = 0;
-        for (int i = 0; i < 3; i++) {
-            long long int temp = (long long int)value_1.bits[i] + value_2.bits[i] + carry;
-            result->bits[i] = (int)(temp & 0xFFFFFFFF);
-            carry = temp >> 32;
-        }
-        result->bits[3] = (value_1.bits[3] & 0x80000000) | ((value_1.bits[3] >> 16) << 16);  // Применяем знак и масштаб
-    } else {
-        // Если знаки разные, вычитаем одно число из другого.
-        s21_decimal temp1 = value_1;
-        s21_decimal temp2 = value_2;
-        if (sign1 == 1) {
-            set_sign(&temp1, 0);  // Инвертируем знак первого числа
-        } else {
-            set_sign(&temp2, 0);  // Инвертируем знак второго числа
-        }
+int s21_add(s21_decimal value_1, s21_decimal value_2, s21_decimal *result) {
+    if (!result) return 1;  // Проверка на NULL
 
-        if (is_less(temp1, temp2)) {
-            s21_decimal copy = value_2;
-            int carry = 0;
-            for (int i = 0; i < 3; i++) {
-                long long int temp = (long long int)copy.bits[i] - value_1.bits[i] - carry;
-                if (temp < 0) {
-                    temp += (1LL << 32);
-                    carry = 1;
-                } else {
-                    carry = 0;
-                }
-                copy.bits[i] = (int)(temp & 0xFFFFFFFF);
-            }
-            *result = copy;
-            set_sign(result, sign2);
-        } else {
-            s21_decimal copy = value_1;
-            int carry = 0;
-            for (int i = 0; i < 3; i++) {
-                long long int temp = (long long int)copy.bits[i] - value_2.bits[i] - carry;
-                if (temp < 0) {
-                    temp += (1LL << 32);
-                    carry = 1;
-                } else {
-                    carry = 0;
-                }
-                copy.bits[i] = (int)(temp & 0xFFFFFFFF);
-            }
-            *result = copy;
-            set_sign(result, sign1);
+    int scale_1 = get_scale(value_1);
+    int scale_2 = get_scale(value_2);
+    int sign_1 = get_sign(value_1);
+    int sign_2 = get_sign(value_2);
+
+    *result = (s21_decimal){{0, 0, 0, 0}}; // Обнуление результата
+
+    // Приведение к одинаковой степени
+    while (scale_1 < scale_2) {
+        if (value_1.bits[2] > (UINT32_MAX / 10)) return 1; // Проверка переполнения
+        for (int i = 2; i >= 0; i--) {
+            uint64_t temp = (uint64_t)value_1.bits[i] * 10;
+            if (i < 2) temp += value_1.bits[i + 1] >> 30;
+            value_1.bits[i] = (uint32_t)temp;
         }
+        scale_1++;
     }
 
-    return normalisation; 
+    while (scale_2 < scale_1) {
+        if (value_2.bits[2] > (UINT32_MAX / 10)) return 1; // Проверка переполнения
+        for (int i = 2; i >= 0; i--) {
+            uint64_t temp = (uint64_t)value_2.bits[i] * 10;
+            if (i < 2) temp += value_2.bits[i + 1] >> 30;
+            value_2.bits[i] = (uint32_t)temp;
+        }
+        scale_2++;
+    }
+
+    int carry = 0;
+    if (sign_1 == sign_2) { 
+        // Сложение чисел с одинаковыми знаками
+        for (int i = 0; i < 3; i++) {
+            uint64_t sum = (uint64_t)value_1.bits[i] + value_2.bits[i] + carry;
+            result->bits[i] = (uint32_t)sum;
+            carry = sum >> 32;
+        }
+        if (carry) return 1; // Переполнение
+        set_sign(result, sign_1);
+    } else { 
+        // Вычитание (если знаки разные)
+        int borrow = 0, cmp = 0;
+        for (int i = 2; i >= 0; i--) {
+            if (value_1.bits[i] > value_2.bits[i]) {
+                cmp = 1;
+                break;
+            } else if (value_1.bits[i] < value_2.bits[i]) {
+                cmp = -1;
+                break;
+            }
+        }
+
+        if (cmp < 0) {  
+            // Меняем местами если `|value_2| > |value_1|`
+            s21_decimal temp = value_1;
+            value_1 = value_2;
+            value_2 = temp;
+            sign_1 = !sign_1;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            int64_t diff = (int64_t)value_1.bits[i] - value_2.bits[i] - borrow;
+            if (diff < 0) {
+                diff += (1LL << 32);
+                borrow = 1;
+            } else {
+                borrow = 0;
+            }
+            result->bits[i] = (uint32_t)diff;
+        }
+
+        set_sign(result, sign_1);
+    }
+
+    set_scale(result, scale_1);
+    return 0;
+}
+
+
+void run_test(s21_decimal value_1, s21_decimal value_2, const char* test_name) {
+    s21_decimal result = {{0, 0, 0, 0}};
+    int error_code = s21_add(value_1, value_2, &result);
+    
+    printf("Тест: %s\n", test_name);
+    if (error_code) {
+        printf("Ошибка при сложении: %d\n", error_code);
+    } else {
+        printf("Результат: ");
+        PrintDecimal(result);
+    }
+    printf("------------------------------------------------\n");
 }
 
 int main() {
-    s21_decimal value_1 = {{0, 0, 0, 0}}; 
-    s21_decimal value_2 = {{0, 0, 0, 0}};
-    s21_decimal result = {{0, 0, 0, 0}};  
+    s21_decimal value_1 = {{100, 0, 0, 0}};
+    s21_decimal value_2 = {{50, 0, 0, 0}};
+    run_test(value_1, value_2, "100 + 50");
 
-    // Пример использования
-    value_1.bits[0] = 100; 
-    value_1.bits[3] = 0;   
+    value_1.bits[3] = (1U << 31);
+    run_test(value_1, value_2, "-100 + 50");
 
-    value_2.bits[0] = 50;   
-    value_2.bits[3] = 0;   
+    value_2.bits[3] = (1U << 31);
+    run_test(value_1, value_2, "-100 + -50");
 
-    // Выполнение операции сложения
-    if (s21_add(value_1, value_2, &result)) {
-        printf("Ошибка при сложении\n");
-    } else {
-        printf("Результат сложения:\n");
-        PrintDecimalBinary(&result);  
-        PrintDecimal(&result); 
-    }
+    s21_decimal big_1 = {{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0}};
+    s21_decimal big_2 = {{1, 0, 0, 0}};
+    run_test(big_1, big_2, "MAX + 1 (overflow)");
+
+    s21_decimal dec_1 = {{123, 0, 0, (2 << 16)}};
+    s21_decimal dec_2 = {{277, 0, 0, (2 << 16)}};
+    run_test(dec_1, dec_2, "1.23 + 2.77");
+
+    s21_decimal max_value = {{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, (1U << 31)}};
+    s21_decimal one = {{1, 0, 0, (1U << 31)}};
+    run_test(max_value, one, "-MAX - 1");
+
+    s21_decimal tiny_value = {{1, 0, 0, (28 << 16) | (1U << 31)}};
+    run_test(tiny_value, tiny_value, "Сложение очень маленьких отрицательных чисел");
+
+    s21_decimal zero = {{0, 0, 0, 0}};
+    run_test(value_1, zero, "-100 + 0");
 
     return 0;
 }

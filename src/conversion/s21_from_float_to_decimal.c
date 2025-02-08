@@ -1,8 +1,4 @@
 #include "../s21_decimal.h"
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #define MAX_DECIMAL 79228162514264337593543950335.0 // 2^96 - 1
 #define MIN_DECIMAL 1e-28
@@ -84,5 +80,3 @@ int main() {
     }
     return 0;
 }
-
-// gcc -o float s21_from_float_to_decimal.c -lm
