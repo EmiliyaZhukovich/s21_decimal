@@ -107,5 +107,13 @@ int main() {
     printf("negate(num6): ");
     PrintDecimal(result);
 
+    int error_code = s21_negate(num1, NULL);
+    printf("\nТест ошибки (NULL указатель): ");
+    if (error_code == 1) {
+        printf("ОК (функция вернула 1, как ожидалось)\n");
+    } else {
+        printf("Ошибка (функция должна вернуть 1!)\n");
+    }
+
     return 0;
 }
