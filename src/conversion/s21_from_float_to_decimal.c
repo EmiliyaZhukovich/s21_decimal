@@ -35,10 +35,10 @@ int s21_from_float_to_decimal(float src, s21_decimal *dst) {
     code = 1;  // Проверка на NULL
   } else {
     null_decimal(dst);  // Обнуляем decimal
-                        // Проверяем на NaN, Infinity, слишком большие и слишком
-                        // маленькие значения
-    if (isnan(src) || isinf(src) || src > (float)MAX_DECIMAL ||
-        src < -(float)MAX_DECIMAL || (fabs(src) < MIN_DECIMAL && src != 0.0f)) {
+
+    // Проверяем на NaN, Infinity, слишком большие и слишком маленькие значения
+    if (isnan(src) || isinf(src) || fabs(src) > (float)MAX_DECIMAL ||
+        fabs(src) < -(float)MAX_DECIMAL || (fabs(src) < MIN_DECIMAL && src != 0.0f)) {
       code = 1;
     } else {
       int sign = signbit(src);  // Определяем знак числа
@@ -51,27 +51,29 @@ int s21_from_float_to_decimal(float src, s21_decimal *dst) {
 
       // Определяем scale (количество знаков после запятой)
       int scale = 0;
+
       while (fmod(value, 1.0) != 0.0 && scale < 28) {
         value *= 10;
         scale++;
       }
 
+  //     while (scale < 28 && floor(value) != value) {  // Проверяем, есть ли дробная часть
+  //   value = round(value * 10);  // Умножаем и округляем к ближайшему целому
+  //   scale++;
+  // }
       if (scale > 28) {
         code = 1;  // Ошибка, если scale слишком большой
       } else {
         // Преобразуем в 96-битное целое число
-        uint64_t low =
-            (uint64_t)fmod(value, 18446744073709551616.0);  // Младшие 64 бита
-        uint32_t high =
-            (uint32_t)(value / 18446744073709551616.0);  // Старшие 32 бита
+        uint64_t low = (uint64_t)fmod(value, UINT64_MAX + 1.0);
+        uint32_t high = (uint32_t)(value / (UINT64_MAX + 1.0));  // Старшие 32 бита
 
         // Проверка переполнения (если число больше 2^96 - 1)
         if (high > 0xFFFFFFFF) {
           code = 1;
         } else {
           dst->bits[0] = (uint32_t)(low & 0xFFFFFFFF);  // Младшие 32 бита
-          dst->bits[1] =
-              (uint32_t)((low >> 32) & 0xFFFFFFFF);  // Средние 32 бита
+          dst->bits[1] = (uint32_t)((low >> 32) & 0xFFFFFFFF);  // Средние 32 бита
           dst->bits[2] = high;  // Старшие 32 бита
 
           set_scale(dst, scale);
@@ -85,6 +87,8 @@ int s21_from_float_to_decimal(float src, s21_decimal *dst) {
 
   return code;  // Единственный return в конце
 }
+
+
 
 // int s21_from_float_to_decimal(float src, s21_decimal *dst) {
 //   int code = 0;  // Код результата
